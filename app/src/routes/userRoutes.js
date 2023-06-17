@@ -10,26 +10,27 @@ const {
   getPaginatedUsers,
 } = require("../controllers/userControllers");
 const { protect } = require("../middlewares/authMiddleware");
+const { requireAdmin } = require("../middlewares/authorizeMiddleware");
 
 // POST /api/users
 router.post("/create-user", createUser);
 
 // GET /api/users/:userId
-router.get("/get-user/:userId", getUserById);
+router.get("/get-user/:userId", protect, getUserById);
 
 // GET /api/users/get-users
-router.get("/get-users", getAllUsers);
+router.get("/get-users", protect, getAllUsers);
 
 // GET /api/users?email=:email
-router.get("/", getUserByEmail);
+router.get("/", protect, getUserByEmail);
 
 // PUT /api/users/:userId
-router.put("/update-user/:userId", updateUser);
+router.put("/update-user/:userId", protect, updateUser);
 
 // DELETE /api/users/:userId
-router.delete("/delete-user/:userId", deleteUser);
+router.delete("/delete-user/:userId", protect, requireAdmin, deleteUser);
 
 // GET /api/users?page=:page&limit=:limit
-router.get("/", getPaginatedUsers);
+router.get("/", protect, getPaginatedUsers);
 
 module.exports = router;

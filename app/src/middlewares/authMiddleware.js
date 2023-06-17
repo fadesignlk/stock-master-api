@@ -4,7 +4,7 @@ const asyncHnadler = require("express-async-handler");
 const User = require("../models/userModel");
 const ApiError = require("../utils/ApiError");
 
-const protect = asyncHnadler(async (req, res, next) => {
+exports.protect = asyncHnadler(async (req, res, next) => {
   let token;
 
   if (
@@ -36,5 +36,3 @@ const protect = asyncHnadler(async (req, res, next) => {
     throw new ApiError(401, "Not authorized, no token");
   }
 });
-
-module.exports = { protect };

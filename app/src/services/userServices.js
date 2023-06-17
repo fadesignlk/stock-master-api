@@ -51,7 +51,10 @@ exports.updateUser = (userId, userData) =>
  * @param {string} userId - The ID of the user to delete.
  * @returns {Promise} - A promise that resolves to the deleted user.
  */
-exports.deleteUser = (userId) => User.findByIdAndDelete(userId);
+exports.deleteUser = (userId) =>
+  User
+    .findByIdAndDelete(userId)
+    .select("-password -otp -otpExpires -resetExpires -resetToken -__v");
 
 /**
  * Get paginated users from the 'users' collection.
