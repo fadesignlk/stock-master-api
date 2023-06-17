@@ -20,27 +20,7 @@ const protect = asyncHnadler(async (req, res, next) => {
 
       // Get user from the token
       const user = await User.findById(decoded.id)
-        .select("-password -createdAt -updatedAt -__v")
-        .populate({
-          path: "defaultBilling",
-          select: "-defaultBilling -defaultShipping -updatedAt -createdAt -__v",
-        })
-        .populate({
-          path: "defaultShipping",
-          select: "-defaultBilling -defaultShipping -updatedAt -createdAt -__v",
-        })
-        .populate({
-          path: "userType",
-          select: "-createdAt -updatedAt -__v",
-          populate: {
-            path: "permissions",
-            select: "name",
-          },
-        })
-        .populate({
-          path: "center",
-          select: "-createdAt -updatedAt -__v",
-        });
+        .select("-password -createdAt -updatedAt -__v");
 
       if (!user) throw new ApiError(401, "User not found");
       req.user = user;
