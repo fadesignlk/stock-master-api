@@ -64,3 +64,13 @@ exports.deleteUser = (userId) =>
  */
 exports.getPaginatedUsers = (page, limit) =>
   paginateResults(User, page, limit);
+
+
+/**
+ * Get paginated products from the 'products' collection.
+ * @param {number} page - The page number for pagination.
+ * @param {number} limit - The number of items per page.
+ * @returns {Promise} - A promise that resolves to an object containing paginated results.
+ */
+exports.getPaginatedProducts = (page, limit) =>
+  paginateResults(Product, page, limit);

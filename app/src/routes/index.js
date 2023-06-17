@@ -1,11 +1,23 @@
 const { Router } = require("express");
 const userRoutes = require("./userRoutes");
 const authRoutes = require("./authRoutes");
+const categoryRoutes = require("./categoryRoutes");
+const brandRoutes = require("./brandRoutes");
+const supplierRoutes = require("./supplierRoutes");
+const productRoutes = require("./productRoutes");
+const locationRoutes = require("./locationRoutes");
+const stockRoutes = require("./stockRoutes");
 
 const routes = Router();
 
 routes.use("/users", userRoutes);
 routes.use("/auth", authRoutes);
+routes.use("/category", categoryRoutes);
+routes.use("/brand", brandRoutes);
+routes.use("/supplier", supplierRoutes);
+routes.use("/product", productRoutes);
+routes.use("/location", locationRoutes);
+routes.use("/stock", stockRoutes);
 
 routes.post("/test", (req, res) => {
   sendMessage(req.body)
