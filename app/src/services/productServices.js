@@ -1,6 +1,3 @@
-const mongoose = require("mongoose");
-const Brand = require("../models/brandModel");
-const Category = require("../models/categoryModel");
 const Product = require("../models/productModel");
 
 /**
