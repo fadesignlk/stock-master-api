@@ -7,6 +7,7 @@ const stockSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, },
         location: { type: mongoose.Types.ObjectId, ref: "Location" },
         description: { type: String },
+        status: { type: String, default: 'in-stock', enum: ['in-stock', 'out-of-stock', 'low-stock', 'reserved', 'damaged'] },
     },
     { timestamps: true, collection: "stocks" }
 );
