@@ -81,7 +81,7 @@ exports.updateSale = asyncHandler(async (req, res) => {
   const { customer, products, discount, saleDate, payment, status } = req.body;
 
   const sale = await getSaleById(saleId);
-  console.log(saleId);
+  
   let totalAmount = 0;
 
   if (products) {

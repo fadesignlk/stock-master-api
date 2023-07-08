@@ -203,7 +203,7 @@ exports.updateStockOnPurchasingCompletion = async (purchaseOrderId) => {
     if (!stock) {
       throw new ApiError(400, "Stock not found");
     }
-    console.log(quantityReceived);
+    
     // Update the stock quantity
     stock.quantity += quantityReceived;
 
