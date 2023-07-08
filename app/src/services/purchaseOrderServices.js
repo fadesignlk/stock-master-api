@@ -1,6 +1,9 @@
 const PurchaseOrder = require("../models/purchaseOrderModel");
 const Product = require("../models/productModel");
+const Stock = require("../models/stockModel");
 const Supplier = require("../models/supplierModel");
+
+const ApiError = require("../utils/ApiError");
 
 /**
  * Get a purchase order by ID.
@@ -42,11 +45,9 @@ exports.createPurchaseOrder = (purchaseOrderData) =>
  * @returns {Promise} - A promise that resolves to the updated purchase order.
  */
 exports.updatePurchaseOrder = (purchaseOrderId, purchaseOrderData) =>
-  PurchaseOrder.findByIdAndUpdate(
-    purchaseOrderId,
-    purchaseOrderData,
-    { new: true }
-  );
+  PurchaseOrder.findByIdAndUpdate(purchaseOrderId, purchaseOrderData, {
+    new: true,
+  });
 
 /**
  * Delete a purchase order.
@@ -69,7 +70,7 @@ exports.addPurchaseItems = async (purchaseOrderId, purchaseItems) => {
   }
 
   // Check if the purchase order is in a valid state to add items
-  const validStates = ["draft", "approved"];
+  const validStates = ["draft"];
   if (!validStates.includes(purchaseOrder.status)) {
     throw new ApiError(400, "Cannot add purchase items to the purchase order in its current state");
   }
@@ -83,6 +84,15 @@ exports.addPurchaseItems = async (purchaseOrderId, purchaseItems) => {
 
   // Add the purchase items to the purchase order
   purchaseOrder.products.push(...purchaseItems);
+
+  // Update the total amount
+  let totalAmount = 0;
+  for (const product of purchaseOrder.products) {
+    totalAmount += product.quantity * product.purchasingPrice;
+  }
+
+  // Update the total amount
+  purchaseOrder.totalAmount = totalAmount;
 
   // Save the updated purchase order
   await purchaseOrder.save();
@@ -103,7 +113,7 @@ exports.removePurchaseItem = async (purchaseOrderId, purchaseItemId) => {
   }
 
   // Check if the purchase order is in a valid state to remove items
-  const validStates = ["draft", "approved"];
+  const validStates = ["draft"];
   if (!validStates.includes(purchaseOrder.status)) {
     throw new ApiError(400, "Cannot remove purchase items from the purchase order in its current state");
   }
@@ -114,11 +124,18 @@ exports.removePurchaseItem = async (purchaseOrderId, purchaseItemId) => {
   );
 
   if (purchaseItemIndex === -1) {
-    throw new ApiError(400, "Purchase order item not found");
+    throw new ApiError(400, "Product not found");
   }
 
   // Remove the purchase item from the array
   purchaseOrder.products.splice(purchaseItemIndex, 1);
+
+  // Update the total amount
+  let totalAmount = 0;
+  for (const product of purchaseOrder.products) {
+    totalAmount += product.quantity * product.purchasingPrice;
+  }
+  purchaseOrder.totalAmount = totalAmount;
 
   // Save the updated purchase order
   await purchaseOrder.save();
@@ -157,4 +174,46 @@ exports.getPurchaseOrderSupplier = async (purchaseOrderId) => {
   return Supplier.findById(purchaseOrder.supplier).select(
     "-__v -createdAt -updatedAt"
   );
+};
+
+/**
+ * Update the stock when a purchase order is completed.
+ * @param {string} purchaseOrderId - The ID of the completed purchase order.
+ * @returns {Promise} - A promise that resolves to the updated stock.
+ */
+exports.updateStockOnPurchasingCompletion = async (purchaseOrderId) => {
+  const purchaseOrder = await PurchaseOrder.findById(purchaseOrderId);
+  if (!purchaseOrder) {
+    throw new ApiError(400, "Purchase order not found");
+  }
+
+  const validStates = ["paid"];
+  if (!validStates.includes(purchaseOrder.status)) {
+    throw new ApiError(400, "Cannot update stock from the purchase order in its current state");
+  }
+
+  const stockUpdates = [];
+
+  // Update the stock quantities for each product in the purchase order
+  for (const item of purchaseOrder.products) {
+    const supplier = purchaseOrder.supplier;
+    const {product, quantity : quantityReceived}  = item;
+
+    const stock = await Stock.findOne({product, supplier});
+    if (!stock) {
+      throw new ApiError(400, "Stock not found");
+    }
+    console.log(quantityReceived);
+    // Update the stock quantity
+    stock.quantity += quantityReceived;
+
+    stockUpdates.push(stock.save());
+  }
+
+  purchaseOrder.status = "received";
+
+  // Wait for all stock updates to complete
+  await Promise.all(stockUpdates);
+
+  return purchaseOrder;
 };
