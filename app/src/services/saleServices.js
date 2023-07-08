@@ -1,6 +1,7 @@
 const Sale = require("../models/saleModel");
 const Customer = require("../models/customerModel");
 const Product = require("../models/productModel");
+const Stock = require("../models/stockModel");
 const ApiError = require("../utils/ApiError");
 
 
@@ -13,8 +14,17 @@ exports.getSaleById = (saleId) =>
   Sale.findById(saleId)
     .populate("customer", "-__v -createdAt -updatedAt")
     .populate({
-      path: "products.product",
+      path: "items.stock",
       select: "-__v -createdAt -updatedAt",
+      populate: { path: "product", select: "-__v -createdAt -updatedAt" }
+    }).populate({
+      path: "items.stock",
+      select: "-__v -createdAt -updatedAt",
+      populate: { path: "supplier", select: "-__v -createdAt -updatedAt" },
+    }).populate({
+      path: "items.stock",
+      select: "-__v -createdAt -updatedAt",
+      populate: { path: "location", select: "-__v -createdAt -updatedAt" }
     });
 
 /**
@@ -25,8 +35,17 @@ exports.getAllSales = () =>
   Sale.find()
     .populate("customer", "-__v -createdAt -updatedAt")
     .populate({
-      path: "products.product",
+      path: "items.stock",
       select: "-__v -createdAt -updatedAt",
+      populate: { path: "product", select: "-__v -createdAt -updatedAt" },
+    }).populate({
+      path: "items.stock",
+      select: "-__v -createdAt -updatedAt",
+      populate: { path: "supplier", select: "-__v -createdAt -updatedAt" },
+    }).populate({
+      path: "items.stock",
+      select: "-__v -createdAt -updatedAt",
+      populate: { path: "location", select: "-__v -createdAt -updatedAt" }
     });
 
 /**
@@ -71,27 +90,26 @@ exports.addSaleItems = async (saleId, saleItems) => {
   }
 
   // Check if the sale is in a valid state to add items
-  const validStates = ["draft", "completed"];
+  const validStates = ["pending", "partly-paid"];
   if (!validStates.includes(sale.status)) {
     throw new ApiError(400, "Cannot add sale items to the sale in its current state");
   }
 
-  // Retrieve the products for the sale items
-  const productIds = saleItems.map((item) => item.product);
-  const products = await Product.find({ _id: { $in: productIds } });
-  if (products.length !== productIds.length) {
-    throw new ApiError(400, "One or more products not found");
-  }
-
   // Add the sale items to the sale
-  sale.products.push(...saleItems);
+  sale.items.push(...saleItems);
+  let totalAmount = 0;
+
+  for (const item of sale.items) {
+    const stock = await Stock.findById(item.stock).populate("product");
+    if (stock && stock.product) {
+      totalAmount += Number(item.quantity * stock.product.sellingPrice);
+    }
+  }
+ 
+  totalAmount -= Number(sale.discount || 0);
 
   // Update the total amount
-  const itemTotal = saleItems.reduce((total, item) => {
-    const product = products.find((p) => p._id.toString() === item.product.toString());
-    return total + item.quantity * product.sellingPrice;
-  }, 0);
-  sale.totalAmount += itemTotal;
+  sale.totalAmount = totalAmount;
 
   // Save the updated sale
   await sale.save();
@@ -112,13 +130,13 @@ exports.removeSaleItem = async (saleId, saleItemId) => {
   }
 
   // Check if the sale is in a valid state to remove items
-  const validStates = ["pending", "partially-paid"];
+  const validStates = ["pending", "completed", "delivered", "partly-paid"];
   if (!validStates.includes(sale.status)) {
     throw new ApiError(400, "Cannot remove sale items from the sale in its current state");
   }
 
   // Find the index of the sale item
-  const saleItemIndex = sale.products.findIndex(
+  const saleItemIndex = sale.items.findIndex(
     (item) => item._id.toString() === saleItemId
   );
 
@@ -126,23 +144,22 @@ exports.removeSaleItem = async (saleId, saleItemId) => {
     throw new ApiError(400, "Sale item not found");
   }
 
-  // Retrieve the sale item being removed
-  const saleItem = sale.products[saleItemIndex];
+  // Remove the sale item from the array
+  sale.items.splice(saleItemIndex, 1);
 
-  // Retrieve the product details
-  const product = await Product.findById(saleItem.product);
-  if (!product) {
-    throw new ApiError(400, "Product not found");
+  let totalAmount = 0;
+
+  for (const item of sale.items) {
+    const stock = await Stock.findById(item.stock).populate("product");
+    if (stock && stock.product) {
+      totalAmount += Number(item.quantity * stock.product.sellingPrice);
+    }
   }
+ 
+  totalAmount -= Number(sale.discount || 0);
 
   // Update the total amount
-  sale.totalAmount -= saleItem.quantity * product.sellingPrice;
-
-  // Remove the sale item from the array
-  sale.products.splice(saleItemIndex, 1);
-
-  // Update the sale status based on the payment
-  sale.status = sale.payment === sale.totalAmount ? "completed" : "partially-paid";
+  sale.totalAmount = totalAmount;
 
   // Save the updated sale
   await sale.save();
@@ -156,13 +173,18 @@ exports.removeSaleItem = async (saleId, saleItemId) => {
  * @returns {Promise} - A promise that resolves to an array of products.
  */
 exports.getSaleProducts = async (saleId) => {
-  const sale = await Sale.findById(saleId);
+  const sale = await Sale.findById(saleId).populate("customer", "-__v -createdAt -updatedAt")
+    .populate({
+      path: "items.stock",
+      select: "-__v -createdAt -updatedAt",
+      populate: { path: "product", select: "-__v -createdAt -updatedAt" }
+    });
+
   if (!sale) {
     throw new Error("Sale not found");
   }
-  const productIds = sale.products.map(
-    (item) => item.product.toString()
-  );
+  const productIds = sale.items.map((item) => item.stock.product);
+  
   return Product.find({ _id: { $in: productIds } }).select(
     "-__v -createdAt -updatedAt"
   );
@@ -182,3 +204,69 @@ exports.getSaleCustomer = async (saleId) => {
     "-__v -createdAt -updatedAt"
   );
 };
+
+/**
+ * Update the stock when a sale is completed.
+ * @param {string} saleId - The ID of the completed sale.
+ * @returns {Promise} - A promise that resolves to the updated stock.
+ */
+exports.updateStockOnSaleCompletion = async (saleId, balance = null) => {
+  const sale = await Sale.findById(saleId);
+  if (!sale) {
+    throw new ApiError(400, "Sale not found");
+  }
+
+  const validStates = ["partly-paid", "pending"];
+  if (!validStates.includes(sale.status)) {
+    throw new ApiError(400, "Cannot update stock from the sales in its current state");
+  }
+
+  const stockUpdates = [];
+
+  if (balance > 0) {
+    throw new ApiError(400, `Cannot complete the sale, ${balance} balance left to be paid`);
+  }
+
+  // Update the stock quantities for each sale item
+  for (const item of sale.items) {
+    const stockId = item.stock;
+    const quantitySold = item.quantity;
+
+    const stock = await Stock.findById(stockId);
+    if (!stock) {
+      throw new ApiError(400, "Stock not found");
+    }
+
+    // Check if the stock has sufficient quantity
+    if (stock.quantity < quantitySold) {
+      throw new ApiError(400, "Insufficient stock quantity");
+    }
+
+    // Update the stock quantity
+    stock.quantity -= quantitySold;
+
+    stockUpdates.push(stock.save());
+  }
+
+  // Wait for all stock updates to complete
+  await Promise.all(stockUpdates);
+
+  return stockUpdates;
+};
+
+/**
+ * Calculate the total amount of a sale.
+ * @param {Object} sale - The sale object.
+ * @returns {Number} - The total amount.
+ */
+async function calculateTotalAmount(sale) {
+  let totalAmount = 0;
+  for (const item of sale.items) {
+    const stock = await Stock.findById(item.stock).populate("product");
+    if (stock && stock.product) {
+      totalAmount += Number(item.quantity * stock.product.sellingPrice);
+    }
+  }
+ 
+  return totalAmount - Number(sale.discount || 0);
+}

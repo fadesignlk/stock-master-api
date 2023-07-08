@@ -11,7 +11,16 @@ const {
   removeSaleItem,
   getSaleProducts,
   getSaleCustomer,
+  updateStockOnSaleCompletion
 } = require("../services/saleServices");
+
+const {
+  getProductById
+} = require("../services/productServices");
+
+const {
+  getStockById
+} = require("../services/stockServices");
 
 // Controller for getting a sale by ID
 exports.getSaleById = asyncHandler(async (req, res) => {
@@ -30,30 +39,36 @@ exports.getAllSales = asyncHandler(async (req, res) => {
 
 // Controller for creating a new sale
 exports.createSale = asyncHandler(async (req, res) => {
-  const { customer, products, discount, saleDate, payment } = req.body;
+  const { customer, items, discount, payment, saleDate, status } = req.body;
 
-  if (!customer || !products || products.length === 0) {
-    throw new ApiError(400, "Please provide a customer and at least one product for the sale");
+  if (!customer || !items || items.length === 0) {
+    throw new ApiError(400, "Please provide a customer and at least one item for the sale");
   }
 
   // Calculate the total amount
   let totalAmount = 0;
-  for (const product of products) {
-    const { sellingPrice, quantity } = product;
-    totalAmount += sellingPrice * quantity;
-  }
+  for (const item of items) {
+    const { stock, quantity } = item;
+    const stockExist = await getStockById(stock);
 
+    if (stockExist.status !== "in-stock" || stockExist.quantity < quantity) {
+      throw new ApiError(400, "Item out of stock");
+    }
+
+    const product = await getProductById(stockExist.product);
+    totalAmount += product.sellingPrice * quantity;
+  }
   // Deduct the discount amount from the total amount
   const discountedAmount = totalAmount - discount;
 
   const saleData = {
     customer,
-    products,
+    items,
     totalAmount: discountedAmount,
     discount,
     payment,
     saleDate,
-    status: payment === discountedAmount ? "completed" : payment < discountedAmount ? "partially-paid" : "pending",
+    status: payment === discountedAmount ? "completed" : payment < discountedAmount ? "partly-paid" : status,
   };
 
   const newSale = await createSale(saleData);
@@ -65,25 +80,39 @@ exports.updateSale = asyncHandler(async (req, res) => {
   const { saleId } = req.params;
   const { customer, products, discount, saleDate, payment, status } = req.body;
 
-  // Calculate the total amount
+  const sale = await getSaleById(saleId);
+  console.log(saleId);
   let totalAmount = 0;
-  for (const product of products) {
-    const { sellingPrice, quantity } = product;
-    totalAmount += sellingPrice * quantity;
-  }
 
+  if (products) {
+    // Calculate the total amount
+
+    for (const product of products) {
+      const { sellingPrice, quantity } = product;
+      totalAmount += sellingPrice * quantity;
+    }
+  }
+  
   const saleData = {
     customer,
     products,
     discount,
     payment,
     saleDate,
-    status: payment === totalAmount ? "completed" : payment < totalAmount ? "partially-paid" : status,
+    status: payment === sale.totalAmount || totalAmount ? "completed" : payment < sale.totalAmount || totalAmount ? "partly-paid" : status,
   };
 
-  // Deduct the discount amount from the total amount
-  const discountedAmount = totalAmount - discount;
-  saleData.totalAmount = discountedAmount;
+  if (products) {
+    // Deduct the discount amount from the total amount
+    const discountedAmount = totalAmount - discount;
+    saleData.totalAmount = discountedAmount;
+  }
+
+  let balance = saleData.totalAmount - saleData.payment;
+
+  if (saleData.status === "completed"){
+    await updateStockOnSaleCompletion(saleId, balance);
+  }
 
   const updatedSale = await updateSale(saleId, saleData);
   if (!updatedSale) throw new ApiError(400, "Sale not found");
@@ -111,15 +140,7 @@ exports.addSaleItems = asyncHandler(async (req, res) => {
 
   const updatedSale = await addSaleItems(saleId, saleItems);
 
-  // Recalculate the total amount
-  const totalAmount = updatedSale.products.reduce((total, item) => {
-    const { sellingPrice, quantity } = item;
-    return total + sellingPrice * quantity;
-  }, 0);
-
-  // Update the sale's totalAmount and status based on the payment
-  updatedSale.totalAmount = totalAmount;
-  updatedSale.status = updatedSale.payment === totalAmount ? "completed" : "partially-paid";
+  updatedSale.status = updatedSale.payment === updatedSale.totalAmount ? "completed" : "partly-paid";
 
   // Save the updated sale
   await updatedSale.save();
@@ -133,15 +154,7 @@ exports.removeSaleItem = asyncHandler(async (req, res) => {
 
   const updatedSale = await removeSaleItem(saleId, saleItemId);
 
-  // Recalculate the total amount
-  const totalAmount = updatedSale.products.reduce((total, item) => {
-    const { sellingPrice, quantity } = item;
-    return total + sellingPrice * quantity;
-  }, 0);
-
-  // Update the sale's totalAmount and status based on the payment
-  updatedSale.totalAmount = totalAmount;
-  updatedSale.status = updatedSale.payment === totalAmount ? "completed" : "partially-paid";
+  updatedSale.status = updatedSale.payment === updatedSale.totalAmount ? "completed" : "partly-paid";
 
   // Save the updated sale
   await updatedSale.save();
@@ -161,4 +174,29 @@ exports.getSaleCustomer = asyncHandler(async (req, res) => {
   const { saleId } = req.params;
   const customer = await getSaleCustomer(saleId);
   res.json(customer);
+});
+
+// Controller for updating the stock when a sale is completed
+exports.updateStockOnSaleCompletion = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+
+  let sale = await getSaleById(saleId);
+
+  let balance = sale.totalAmount - sale.payment;
+
+  const stockUpdates = await updateStockOnSaleCompletion(saleId, balance);
+
+  res.json(stockUpdates);
+});
+
+exports.updateSaleStatus = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+  const { status } = req.body;
+
+  const updatedSale = await updateSaleStatus(saleId, status);
+  if (!updatedSale) {
+    throw new ApiError(400, "Sale not found");
+  }
+
+  res.json(updatedSale);
 });

@@ -10,6 +10,8 @@ const {
   removeSaleItem,
   getSaleProducts,
   getSaleCustomer,
+  updateSaleStatus,
+  updateStockOnSaleCompletion
 } = require("../controllers/saleControllers");
 const { protect } = require("../middlewares/authMiddleware");
 const { requireStaff, requireManager } = require("../middlewares/authorizeMiddleware");
@@ -23,8 +25,11 @@ router.get("/get-sale/:saleId", protect, requireStaff, getSaleById);
 // GET /api/sales/get-sales
 router.get("/get-sales", protect, requireStaff, getAllSales);
 
-// PUT /api/sales/:saleId
+// PUT /api/sales/update-sale/:saleId
 router.put("/update-sale/:saleId", protect, requireStaff, updateSale);
+
+// PUT /api/sales/update-sale-status/:saleId
+router.put("/complete-sale/:saleId", protect, requireStaff, updateStockOnSaleCompletion);
 
 // DELETE /api/sales/:saleId
 router.delete("/delete-sale/:saleId", protect, requireManager, deleteSale);
