@@ -7,14 +7,11 @@ const ApiError = require("../utils/ApiError");
 exports.protect = asyncHnadler(async (req, res, next) => {
   let token;
 
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    try {
-      //get token from header
-      token = req.headers.authorization.split(" ")[1];
+  //get token from cookies
+  token = req.cookies.jwt;
 
+  if (token) {
+    try {
       //verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -28,7 +25,7 @@ exports.protect = asyncHnadler(async (req, res, next) => {
       next();
     } catch (error) {
       console.log(error);
-      throw new ApiError(401, "You are not authorized");
+      throw new ApiError(401, "Not authorized, invalid token");
     }
   }
 

@@ -9,6 +9,7 @@ const {
 } = require("./middlewares/errorMiddleware");
 const connectDB = require("./configs/db");
 const port = Env.port;
+const cookieParser = require("cookie-parser")
 const routes = require("./routes");
 const seedData = require("./services/seedData");
 
@@ -18,6 +19,8 @@ app.use(cors({ origin: "*" }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+app.use(cookieParser())
 
 app.use("/api/app", routes);
 
